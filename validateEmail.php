@@ -1,680 +1,508 @@
 <?php
-//
-// Бібліотека якісної валідації email на стороні сервера
 
+declare(strict_types=1);
+
+/**
+ * Бібліотека якісної валідації email на стороні сервера.
+ * Повністю синхронізована з JS версією та оптимізована для PHP 8.4+.
+ * 
+ * @author uwayit
+ * @link https://github.com/uwayit/validate-email-full-jquery
+ */
 class validateEmail
+{
+    private string $email;
+    private array $errors = [];
+    private array $epart = [];
+
+    public function __construct(string $email)
     {
-
-    private $email = '';
-    private $error = [];
-
-    private $epart = [];
-    // Послідовно проходимося по функціях і опрацьовуємо отриманий email
-    // PHP бібліотека на стадії дошліфовки
-    function __construct($email)
-        {
-        // Тихо видаляє з поля з email УСІ пробіли та знак "+" на початку мила
-        // та приводимо до нижнього регістру
-        $this->initialPreparation($email);
-
-        // Виявляємо можливі баги інпат полів та плейсхолдерів
-        $this->checkBugPlaceholder();
-
-        // Тихо видаляємо www в мильнику, бо то явно помилка і йдемо далі
-        $this->cleanWww();
-        // Деперсоналізуємо email видаляючи з нього додаткові фільтруючі патерни
-        // myemail+work@gmail.com = myemail@gmail.com
-        $this->clearPlus();
-
-
-        // Розбираємо email на частини
-        $this->makeEpart();
-        // Перевіряємо на наявність цифр в домені
-        $this->numberTest();
-
-        // Перевіряємо синтаксис імені
-        $this->sintaksisValid();
-
-        // Стандартизуємо email
-        $this->buildStandartEmail();
-        // Якщо довжина email до собачки надто коротка
-        $this->minLength();
-        // Деякі поштовики забороняють використовувати _ в адресі
-        $this->tireStop();
-
-        }
-
-
-
-
-    // Тихо видаляє з поля з email УСІ пробіли та знак "+" на початку мила
-// та приводимо до нижнього регістру
-    public function initialPreparation($email)
-        {
-        if ($email) {
-            // Видаляємо пробіли на початку і в кінці рядка та всі пробіли всередині рядка
-            $email = trim($email);
-            $email = str_replace(' ', '', $email);
-            $email = strtolower($email);
-
-            // Видаляємо плюс на початку
-            if ($email[0] === '+') {
-                $email = substr($email, 1);
-                }
-            $this->email = $email;
-            }
-            if($this->email == '' or $this->email == 'email'){
-            $this->error[] = 'empty';
-            $this->email = '';
-            }
-
-        }
-
-
-
-    public function checkBugPlaceholder()
-        {
-        // Далі нічого не робимо, якщо раніше помічена хоча б одна помилка
-        if (!empty($this->error))
-            return false;
-
-        if (empty($this->email) or $this->email == 'email' or $this->email == 'youremail') {
-            $this->error[] = 'placeholder';
-            $this->email = '';
-            }
-        }
-
-    // Тихо видаляємо www в мильнику, бо то явно помилка і йдемо далі
-    // АЛЕ
-    // Краще насправді не видаляти і не йти далі, а просити клієнта все перевірити і виправити помилки самостійно
-    // Бо кліент вірогідно дуже погано розуміє що таке email і де його взяти
-    // Отож статистично, якщо він вводить email починаючи з www то там неправильно не тільки це, а взагалі все введено від балди
-    // Тож я просто видаляю www, а ви можете наприклад видати помилку (приклади виводу помилок вище)
-    public function cleanWww()
-        {
-        // Далі нічого не робимо, якщо раніше помічена хоча б одна помилка
-        if (!empty($this->error))
-            return false;
-
-        if (strpos($this->email, "www.") === 0) {
-            substr($this->email, 4);
-            }
-        }
-
-
-    // якщо плюс у середині мила: Тихо видаляє знак плюс "+" і все, що після нього до собачки
-    // Дозволяє деперсоналізувати введення email
-    public function clearPlus()
-        {
-        // Далі нічого не робимо, якщо раніше помічена хоча б одна помилка
-        if (!empty($this->error))
-            return false;
-
-        $pos_plus = strrpos($this->email, '+');
-        if ($pos_plus > 0) {
-            $this->email = substr($this->email, 0, $pos_plus) . substr($this->email, strpos($this->email, '@'));
-            }
-        }
-
-
-
-    // Розбираємо email на частини
-    public function makeEpart()
-        {
-        // Якщо точка є, то тут буде кількість символів до точки
-        $this->epart['lastPoint'] = strrpos($this->email, '.');
-        // Якщо собачка є, то тут буде кількість символів до собачки
-        $this->epart['lastAt'] = strrpos($this->email, '@');
-        // Одержуємо доменну зону (наприклад, 'com')
-        $this->epart['domainZone'] = $this->correctDomainZone(substr($this->email, $this->epart['lastPoint'] + 1));
-        // Одержуємо все до собачки (локальну частину)
-        $this->epart['localPart'] = substr($this->email, 0, $this->epart['lastAt']);
-        // Одержуємо весь домен (наприклад, 'gmail.com')
-        $this->epart['domainAll'] = substr($this->email, $this->epart['lastAt'] + 1);
-        // Одержуємо лише домен без зони (наприклад, 'gmail')
-        $this->epart['domainOnly'] = substr($this->email, $this->epart['lastAt'] + 1, $this->epart['lastPoint'] - $this->epart['lastAt'] - 1);
-        // Про всяк випадок, щоб застосувати зміни що зроблено вище
-        $this->sborka();    
+        $this->email = $email;
+        $this->process();
     }
 
-    // Про всяк випадок, щоб застосувати зміни
-        public function sborka(){
+    /**
+     * Основний конвеєр обробки та валідації
+     */
+    private function process(): void
+    {
+        // 1. Попередня підготовка (очищення від пробілів, нижній регістр)
+        $this->initialPreparation();
+
+        // 2. Перевірка на баги плейсхолдерів
+        if (empty($this->email) || $this->email === 'email' || $this->email === 'youremail') {
+            $this->addError('placeholder');
+            return;
+        }
+
+        // 3. Очищення від "www."
+        $this->cleanWww();
+
+        // 4. Очищення від "+" (фільтри)
+        $this->clearPlus();
+
+        // 5. Виправлення типових помилок у доменах (напр. gmail.com.ua -> gmail.com)
+        $this->fixCommonMisspellings();
+
+        // 6. Розбір на частини (epart) та автоматичне виправлення зон/імен
+        if (!$this->makeEpart()) {
+            $this->addError('regulyarTest'); // Якщо не вдалося розібрати - це помилка синтаксису
+            return;
+        }
+
+        // 7. Перевірка на цифри у домені
+        if ($this->numberTest($this->epart['domainAll'])) {
+            $this->addError('numberTestTest');
+            return;
+        }
+
+        // 8. Перевірка на "брехливі" пошти
+        if ($this->isLie($this->email)) {
+            $this->addError('isLieTest');
+            return;
+        }
+
+        // 9. Сувора перевірка регулярним виразом
+        if (!$this->validateRegex($this->email)) {
+            $this->addError('regulyarTest');
+            return;
+        }
+
+        // 10. Перевірка на анонімайзери
+        if ($this->stopAnonimayzer($this->epart['domainAll'])) {
+            $this->addError('stopAnonimayzerTest');
+            return;
+        }
+
+        // 11. Перевірка синтаксису (подвійні крапки, початок з символу тощо)
+        if ($this->sintaksisValid($this->epart)) {
+            $this->addError('sintaksisValidTest');
+            return;
+        }
+
+        // 12. Довжина доменної зони
+        if ($this->domainZoneLength($this->epart['domainZone'])) {
+            $this->addError('domainZoneLenght');
+            return;
+        }
+
+        // 13. Перевірка за чорним списком доменів
+        if ($this->stopDomainALL($this->epart)) {
+            $this->addError('stopDomainALLTest');
+            return;
+        }
+
+        // 14. Однолітерні домени
+        if ($this->oneLetter($this->epart['domainAll'])) {
+            $this->addError('oneLetterTest');
+            return;
+        }
+
+        // 15. Заборонені зони
+        if ($this->badZone($this->epart['domainZone'])) {
+            $this->addError('badZoneTest');
+            return;
+        }
+
+        // 16. Нормалізація (приведення синонімів до стандарту)
+        $this->email = $this->buildStandartEmail($this->email);
+        $this->makeEpart(); // Перезбираємо після нормалізації
+
+        // 17. Yandex телефони
+        if ($this->yaPhone($this->epart)) {
+            $this->addError('yaphoneTest');
+            return;
+        }
+
+        // 18. Мінімальна довжина локальної частини
+        if ($this->minLength($this->epart)) {
+            $this->addError('minLengthTest');
+            return;
+        }
+
+        // 19. Заборонені підкреслення (tireStop)
+        if ($this->tireStop($this->epart['domainOnly'], $this->epart['localPart'])) {
+            $this->addError('tireStopTest');
+            return;
+        }
+
+        // 20. Користувацький бан-лист (neNa)
+        if ($this->neNa($this->epart['domainAll'])) {
+            $this->addError('neNaTest');
+            return;
+        }
+    }
+
+    /**
+     * Очищення email від пробілів та лідируючого плюса
+     */
+    private function initialPreparation(): void
+    {
+        // Видаляємо всі пробіли
+        $this->email = preg_replace('/\s+/', '', trim($this->email));
+        $this->email = strtolower($this->email);
+
+        if (str_starts_with($this->email, '+')) {
+            $this->email = substr($this->email, 1);
+        }
+    }
+
+    /**
+     * Видалення "www." на початку
+     */
+    private function cleanWww(): void
+    {
+        if (str_starts_with($this->email, 'www.')) {
+            $this->email = substr($this->email, 4);
+        }
+    }
+
+    /**
+     * Видалення додаткових фільтрів після плюса (user+filter@gmail.com -> user@gmail.com)
+     */
+    private function clearPlus(): void
+    {
+        $posPlus = strrpos($this->email, '+');
+        $posAt = strpos($this->email, '@');
+
+        if ($posPlus !== false && $posAt !== false && $posPlus < $posAt) {
+            $this->email = substr($this->email, 0, $posPlus) . substr($this->email, $posAt);
+        }
+    }
+
+    /**
+     * Виправлення найбільш типових друкарських помилок
+     */
+    private function fixCommonMisspellings(): void
+    {
+        $replacements = [
+            'yandex.com.ua' => 'yandex.ua',
+            'gmail.com.ua' => 'gmail.com',
+        ];
+        $this->email = str_replace(array_keys($replacements), array_values($replacements), $this->email);
+    }
+
+    /**
+     * Розбір email на складові та автоматичне виправлення помилок у назвах/зонах
+     */
+    private function makeEpart(): bool
+    {
+        $lastAt = strrpos($this->email, '@');
+        if ($lastAt === false) return false;
+
+        $localPart = substr($this->email, 0, $lastAt);
+        $domainAll = substr($this->email, $lastAt + 1);
+
+        $lastPoint = strrpos($domainAll, '.');
+        if ($lastPoint === false) return false;
+
+        $domainOnly = substr($domainAll, 0, $lastPoint);
+        $domainZone = substr($domainAll, $lastPoint + 1);
+
+        // Автоматичне виправлення зони
+        $domainZone = $this->correctDomainZone($domainZone);
+        
+        // Автоматичне виправлення імені домену
+        $domainOnly = $this->correctName($domainOnly);
+
+        $this->epart = [
+            'localPart' => $localPart,
+            'domainAll' => $domainOnly . '.' . $domainZone,
+            'domainOnly' => $domainOnly,
+            'domainZone' => $domainZone,
+        ];
+
+        $this->sborka();
+        return true;
+    }
+
+    /**
+     * Збирання email з частин
+     */
+    private function sborka(): void
+    {
         $this->email = $this->epart['localPart'] . '@' . $this->epart['domainOnly'] . '.' . $this->epart['domainZone'];
-        }
+    }
 
+    /**
+     * Виправлення помилкових доменних зон через match (PHP 8.0+)
+     */
+    private function correctDomainZone(string $zone): string
+    {
+        return match (true) {
+            in_array($zone, ['ry', 'rv', 'ri', 'rn', 'tu', 'ty', 'my']) => 'ru',
+            in_array($zone, ['cjm', 'cpm', 'kom', 'gom', 'vom', 'con', 'kon', 'cm', 'om', 'cim', 'som', 'xom', 'cox']) => 'com',
+            in_array($zone, ['orq', 'opq', 'opg']) => 'org',
+            $zone === 'ya' => 'ua',
+            in_array($zone, ['ner', 'het', 'bet', 'nen', 'nit', 'met', 'ney', 'ne', 'nwt']) => 'net',
+            default => $zone
+        };
+    }
 
+    /**
+     * Виправлення помилкових імен доменів
+     */
+    private function correctName(string $name): string
+    {
+        return match (true) {
+            in_array($name, ['yandax', 'yandeks', 'yandx', 'yangex', 'jandex', 'yadex', 'uandex', 'yndex', 'ayndex']) => 'yandex',
+            in_array($name, ['digmir', 'biqmir', 'diqmir']) => 'bigmir',
+            in_array($name, ['mfil', 'meil', 'msil', 'maij', 'maill', 'mil', 'imeil', 'mael', 'maii', 'mali', 'mal', 'majl', 'maul', 'masl', 'maik', 'ail', 'naul', 'nail']) => 'mail',
+            in_array($name, ['cloud', 'ikloud', 'iclout', 'icloub', 'cloub']) => 'icloud',
+            in_array($name, [
+                'gamailcom', 'gmaill', 'gmailco', 'gmel', 'qm', 'gmjl', 'gmm', 'gmaa', 'ggmai', 'cmal', 'cail', 'gail',
+                'gmal', 'gmei', 'gmaij', 'gmajl', 'qnail', 'gnail', 'gmeil', 'gmall', 'jmail', 'gmaii', 'gmali', 'hmail',
+                'gmael', 'jimal', 'jmeil', 'qhail', 'gmoil', 'ghail', 'cmail', 'gamil', 'dmail', 'gmaik', 'gmоil', 'gimajl',
+                'gimail', 'qemail', 'gomail', 'gemeil', 'gemail', 'gamail', 'gameil', 'gmaul', 'qeimal', 'glail', 'gmaile',
+                'goi', 'qoi', 'gmfql', 'gmd'
+            ]) => 'gmail',
+            default => $name
+        };
+    }
 
+    /**
+     * Перевірка на наявність цифр у домені
+     */
+    private function numberTest(string $domainAll): bool
+    {
+        return preg_match('/\d/', $domainAll) === 1;
+    }
 
-    // Перевіряємо на наявність цифр в домені
-    public function numberTest()
-        {
-        // Далі нічого не робимо, якщо раніше помічена хоча б одна помилка
-        if (!empty($this->error))
-            return false;
+    /**
+     * Перевірка на "фейкові" адреси та збіг з хостом
+     */
+    private function isLie(string $email): bool
+    {
+        $atPos = strrpos($email, '@');
+        $domain = $atPos !== false ? substr($email, $atPos + 1) : '';
+        $host = $_SERVER['HTTP_HOST'] ?? '';
 
-        if (preg_match('/\d/', $this->epart['domainAll']) === 1) {
-
+        if ($domain === $host || 'www.' . $domain === $host) {
             return true;
-            }
-        return false;
         }
 
-
-    // Ми відштовхуємося від логіки, що:
-    // 1. email це унікальний ідентифікатор користувача
-    // 2. під одним email можна зареєструвати лише один аккаунт
-    // В зв'язку з цим ми закриваємо цією функцією всі можливості множинних використань одного email
-    public function buildStandartEmail()
-        {
-        // Далі нічого не робимо, якщо раніше помічена хоча б одна помилка
-        if (!empty($this->error))
-            return false;
-        // Видаляємо пробіли на початку і в кінці рядка та всі пробіли всередині рядка
-        $email = trim($this->email);
-        $email = preg_replace('/\s+/', '', $email);
-        $email = strtolower($email);
-
-        // За замовчуванням так і запишемо якщо нічого не змінимо
-        $StandartEmail = $email;
-
-        // Конвертуємо всі можливі варіації Яндекс ящиків в еталонний формат mail.mail@yandex.ru
-        // Не найкраще рішення використовувати .[a-z]{2,3} але зато коротко
-        if (preg_match('/@(?:yandex\.[a-z]{2,3}|ya\.ru|narod\.ru)$/i', $email)) {
-            list($box, $domain) = explode('@', $email, 2);
-            $StandartEmail = str_replace('-', '.', $box) . '@yandex.ru';
-            }
-
-        // Конвертуємо всі можливі варіації ГУГЛ ящиків на еталонний формат mailmail@gmail.com
-        if (preg_match('/@(gmail\.com|googlemail\.com)$/i', $email)) {
-            list($box, $domain) = explode('@', $email, 2);
-            $StandartEmail = str_replace('.', '', $box) . '@gmail.com';
-            }
-
-        // Конвертуємо всі можливі варіації ProtonMail ящиків на еталонний формат box@proton.me
-        if (preg_match('/@(pm\.me|proton\.me|protonmail\.com)$/i', $email)) {
-            list($box, $domain) = explode('@', $email, 2);
-            $StandartEmail = str_replace('.', '', $box) . '@proton.me';
-            }
-        // ВИдаляємо точки в icloud
-        if (preg_match('/@(icloud\.com)$/i', $email)) {
-            list($box, $domain) = explode('@', $email, 2);
-            $StandartEmail = str_replace('.', '', $box) . '@icloud.com';
-            }
-        // Конвертуємо yahoo
-        if (preg_match('/@(ymail\.com)$/i', $email)) {
-            list($box, $domain) = explode('@', $email, 2);
-            $StandartEmail = str_replace('.', '', $box) . '@yahoo.com';
-            }
-        $this->email = $StandartEmail;
-        }
-
-
-
-
-
-
-    // Не даємо клієнту вказувати відверто брехливі email
-    public function isLie()
-        {
-        // Якщо клієнт на сайті example.com подає заявку
-        // то всі скриньки з домену @example.com не можна використовувати як скриньку
-        $doman_email = explode('@', $this->email);
-        $host = core::getCurrentDomainByServerHttpHost();
-        if ($doman_email[1] == $host) {
-            return true;
-            }
-        $email_not_you = [
-            // Відверті невірні та/або брехливі ящики
-            // Достовірно відомо - таких немає у клієнтів
-            // Сюди можна також внести наприклад наші email або якісь конкретні
-            'mail@mail.ru',
-            'gmail@gmail.com',
-            'email@mail.ua',
-            'email@example.com'
-        ];
-        foreach ($email_not_you as $invalidEmail) {
-            if ($invalidEmail == $this->email) {
-                // Разом з відхиленням email ми можемо
-                // запам'ятовувати факт спроби вказівки клієнтом брехливої ​​інформації
-                // та передати цю інформацію на сервер разом із заявкою
-                // Я не розробляв, але десь це може знадобитись
-                return true;
-                }
-            }
-        // Якщо з email все ок
-        return false;
-        }
-
-    // Додаткова валідація регулярним виразом
-    // Грубо первіряє на коректність конструкції
-    // Не дозволяє кирилицю
-    static function validateEmail($email)
-        {
-        $re = '/^([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,12}$/';
-        return preg_match($re, $email) === 1;
-        }
-
-    // cannot contain an underdash "_" in the address
-    public function tireStop()
-        {
-        // Далі нічого не робимо, якщо раніше помічена хоча б одна помилка
-        if (!empty($this->error))
-            return false;
-        if (
-            (strpos($this->epart['domainOnly'], 'yandex') !== false) &&
-            (strpos($this->epart['localPart'], '_') !== false)
-        ) {
-            $this->error[] = 'tireStop';
-            }
-        }
-
-    // Якщо Ваші листи не можливо доставити на якісь домени, або ви НЕ хочете доставляти на них
-// можна недопускати вказання юзерами цих email
-    static function neNa($domainAll)
-        {
-        if ($domainAll == 'my.com') {
-            return 'my.com';
-            }
-        if ($domainAll == 'rambler.ua') {
-            return 'rambler.ua';
-            }
-        return false;
-        }
-
-
-    // email які починаються з номерів телефонів в яндексі є синонімами основних ящиків
-    // Тож в ідеалі треба забороняти використовувати yandex email що починаються з телефонів
-    // І вимагати вказання кореневого email
-    public static function yaPhone($epart)
-        {
-        // Перевіряємо, чи містить домен "yandex" або "ya.ru"
-        if (preg_match('/yandex|ya\.ru/', $epart['domainAll'])) {
-            $phoneCodes = [
-                '/^380/', // Україна
-                '/^37/',  // Білорусь, Молдова, Латвія, Вірменія
-                '/^99/',  // Грузія, Киргизстан, Таджикистан, Узбекистан
-                '/^79/',  // РФ
-                '/^89/',  // РФ
-                '/^77/'   // Казахстан
-            ];
-
-            // Якщо локальна частина починається з телефонного коду і містить тільки цифри
-            foreach ($phoneCodes as $code) {
-                if (preg_match($code, $epart['localPart']) && preg_match('/^\d{11,13}$/', $epart['localPart'])) {
-                    return true;
-                    }
-                }
-            }
-        return false;
-        }
-
-
-    // Виявляємо чи використовує юзер анонімайзер, тобто тимчасову, однохвилину пошту
-    public static function stopAnonimayzer($domainAll)
-        {
-        $anonimayzer = [
-            // УВАГА!!! Всі домени та зони нижче потрібно вводити в нижньому регістрі
-            // Перелічимо які хочемо анонімайзери через кому
-            'scryptmail.com'
+        $badEmails = [
+            'mail@mail.ru', 'gmail@gmail.com', 'email@mail.ua', 'email@example.com', 'test@test.com'
         ];
 
-        foreach ($anonimayzer as $domain) {
-            if ($domain === $domainAll) {
-                return true; // Помилка
-                }
-            }
-        return false;
-        }
+        return in_array($email, $badEmails);
+    }
 
-    // Виправляємо помилкову зону на коректну
-    public static function correctDomainZone($domainZone)
-        {
-        $corrections = [
-            // Всі ці помилки засновані на реальному досвіді
-            'ru' => ['ry', 'rv', 'ri', 'rn', 'tu', 'ty', 'my'],
-            'com' => ['cjm', 'cpm', 'kom', 'gom', 'vom', 'con', 'kon', 'cm', 'om', 'cim', 'som', 'xom', 'cox'],
-            'org' => ['orq', 'opq', 'opg'],
-            'ua' => ['ya'],
-            'net' => ['ner', 'het', 'bet', 'nen', 'nit', 'met', 'ney', 'ne', 'nwt']
+    /**
+     * Валідація регулярним виразом
+     */
+    private function validateRegex(string $email): bool
+    {
+        return (bool)preg_match('/^([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,12}$/', $email);
+    }
+
+    /**
+     * Перевірка на анонімайзери
+     */
+    private function stopAnonimayzer(string $domainAll): bool
+    {
+        $anonimayzers = [
+            'scryptmail.com', '10minutemail.com', '10minutemail.net', 'guerrillamail.com', 'mailinator.com',
+            'temp-mail.org', 'dropmail.me', 'dispostable.com', 'trashmail.com', 'yopmail.com'
         ];
+        return in_array($domainAll, $anonimayzers);
+    }
 
-        foreach ($corrections as $correctZone => $errors) {
-            if (in_array($domainZone, $errors)) {
-                return $correctZone;
-                }
-            }
-
-        return $domainZone; // Повертає початкову зону, якщо вона не знайдена серед помилкових
-        }
-
-    // Достовірно помилкові домени що виправляються автоматично на коректні
-    // Найпоширеніші друкарські помилки
-    // ! ЧЕРЕЗ СПЕЦИФІКИ ПЕРЕВІРКИ ДОМЕНУ (за входженням на початку), сюди не варто включати варіант на кшталт
-    // ! 'gmai','gma', -- бо буде робити даремну заміну шила на шило
-    public function correctName()
-        {
-        // Перевірка та мовчазне непомітне для клієнта виправлення найбільш типових та явних друкарських помилок у мильниках
-        $this->email = str_replace('gmail.com.ua', 'gmail.com', $this->email);
-
-        $corrections = [
-            'yandex' => ['yandax', 'yandeks', 'yandx', 'yangex', 'jandex', 'yadex', 'uandex', 'yndex', 'ayndex'],
-            'bigmir' => ['digmir', 'biqmir', 'diqmir'],
-            'mail' => [
-                'mfil',
-                'meil',
-                'msil',
-                'maij',
-                'maill',
-                'mil',
-                'imeil',
-                'mael',
-                'maii',
-                'mali',
-                'mal',
-                'majl',
-                'maul',
-                'masl',
-                'maik',
-                'ail',
-                'naul',
-                'nail'
-            ],
-            'icloud' => ['icloud', 'cloud', 'ikloud', 'iclout', 'icloub', 'cloub'],
-            // GMAIL.COM та ім'я йому ЛЕГІОН
-            'gmail' => [
-                'gamailcom',
-                'gmaill',
-                'gmailco',
-                'gmel',
-                'qm',
-                'gmjl',
-                'gmm',
-                'gmaa',
-                'ggmai',
-                'cmal',
-                'cail',
-                'gail',
-                'gmal',
-                'gmei',
-                'gmaij',
-                'gmajl',
-                'qnail',
-                'gnail',
-                'gmeil',
-                'gmall',
-                'jmail',
-                'gmaii',
-                'gmali',
-                'hmail',
-                'gmael',
-                'jimal',
-                'jmeil',
-                'qhail',
-                'gmoil',
-                'ghail',
-                'cmail',
-                'gamil',
-                'dmail',
-                'gmaik',
-                'gmоil',
-                'gimajl',
-                'gimail',
-                'qemail',
-                'gomail',
-                'gemeil',
-                'gemail',
-                'gamail',
-                'gameil',
-                'gmaul',
-                'qeimal',
-                'glail',
-                'gmaile',
-                'goi',
-                'qoi',
-                'gmfql',
-                'gmd'
-            ]
-        ];
-
-        foreach ($corrections as $correctName => $errors) {
-            if (in_array($this->epart['domainOnly'], $errors)) {
-                $this->epart['domainOnly'] = $correctName;
-                $this->email = $this->epart['localPart'] . '@' . $this->epart['domainOnly'];
-                }
-            }
-        }
-
-    // Не даємо клієнту вказувати email на перелічених нижче доменах та зонах
-    // Здебільшого це неймовірно тупі помилки
-    // Дєякі помилки можна було б виправляти автоматично, але ми ітак багато помилок виправляємо автоматично і це вже нюанси
-    public static function stopDomainALL($epart)
-        {
-        $email_not_valid = [
-            // УВАГА!!! Всі домени та зони нижче потрібно вводити в нижньому регістрі
-            // УВАГА!!! Всі домени та зони нижче потрібно вводити в нижньому регістрі
-            'com.ua',
-            'ua.com',
-            'kom.ua',
-            'kis.ru',
-            'kom.ru',
-            'com.ru',
-            'ru.com',
-            'meil.com',
-            'mael.com',
-            'emeil.ru',
-            'emeil.com',
-            'imeil.ua',
-            'com.com',
-            'net.ua',
-            'net.ru',
-            'com.net',
-            'example.com',
-            'sitemail.com',
-            'site.com',
-            'email.com',
-            'mailcom.ru',
-
-            // Разные мелкачи типа yahoo rambler hotmail яблоки icloud и т.п.  и связанные с ними опечатки
-            'yahoo.net',
-            'hotmail.ru',
-            'ramler.ru',
-            'ramdler.ru',
-            'rambler.com',
-            'yaho.com',
-            // Популярные украинские почтовики
-            'ua.net',
-            'ykr.net',
-            'ykt.net',
-            'ukt.net',
-            'ucr.net',
-            'ukr.com',
-
-            'bigmir.ua',
-            'bigmir.com',
-
-            // Осторожней с этим GMAIL
-            'gmail.ru',
-            'gmail.ua',
-            'gmail.com.ua',
-            'gmail.com.ru',
-
-            // YANDEX 
-            'ya.ua',
-            'ya.com',
-            'yande.ru',
-            'yande.ua',
-
-            // MAIL.RU и вся их орда
-            'inboks.ru',
-            'indox.ru',
-            'list.ua',
-            'list.com',
-            'iist.ru',
-            'iist.ua',
-            'bk.com',
-            'bk.ua',
-            'dk.com',
-            'br.com',
-            'dk.ru',
-            'br.ru',
-            'bl.ru',
-            'bj.ru',
-            'vk.ru',
-            'vk.com',
-            'vkontakte.ru',
-            'mail.com',
-            'mail.com.ua',
-            'mail.com.ru',
-        ];
-
-
-
-        $domain_not_valid = [
-            // Зони які точно не вірні і які неможливо розібрати
-            'yy',
-            'aa'
-        ];
-
-        foreach ($email_not_valid as $invalidEmail) {
-            if ($invalidEmail === $epart['domainAll']) {
-                return true; // Помилка
-                }
-            }
-
-        foreach ($domain_not_valid as $invalidDomain) {
-            if ($epart['domainZone'] === $invalidDomain) {
-                return true; // Помилка
-                }
-            }
-
-        return false;
-        }
-
-    // доменное имя не может быть из одной буквы, за исключением I.UA и A.UA, 
-    // другие же любые международные сервисы которые мыслимыми способами могут использоваться(типа x.com) это ошибка
-    public static function oneLetter($domainAll)
-        {
-        if (isset($domainAll)) {
-            if (strpos($domainAll, 'i.ua') === false && strpos($domainAll, 'a.ua') === false) {
-                if (strlen($domainAll) === 1) {
-                    return true;
-                    }
-                }
-            }
-
-        return false;
-        }
-    // Якщо домена зона складається більше ніж з 5 букв, то це помилка
-// Спірне рішення, бо корпоративні пошти можуть були усілякі - .place наприклад
-// 3 - якшо сайт НЕ розрахований під корпоративних клієнтів
-// На фронті має бути теж відрегульовано
-    function domainZoneLength($domainZone)
-        {
-        return strlen($domainZone) > 5; 
-        }
-    // Якщо домена зона - є в цьому переліку, то повертаємо помилку
-    function badZone($domainZone)
-        {
-        $badZones = ['xxx', 'biz', 'cc'];
-        return in_array($domainZone, $badZones);
-        }
-
-    // Мінімальна довжина для деяких поштових скриньок
-    public function minLength()
-        {
-        // Далі нічого не робимо, якщо раніше помічена хоча б одна помилка
-        if (!empty($this->error))
-            return false;
-        $domainRules = [
-            'i.ua' => 6,
-            'ro.ru' => 6,
-            'r0.ru' => 6,
-            'rambler.ru' => 6,
-            'lenta.ru' => 6,
-            'myrambler.ru' => 6,
-            'gmail.com' => 5,
-            'mail.ru' => 3,
-            'mail.ua' => 3,
-            'inbox.ru' => 3,
-            'list.ru' => 3,
-            'bk.ru' => 3
-        ];
-
-        $minLength = isset($domainRules[$this->epart['domainAll']]) ? $domainRules[$this->epart['domainAll']] : 3;
-        $test = strlen($this->epart['localPart']) < $minLength;
-        if($test){
-            $this->error[] = 'minLength';
-        }
-        }
-
-    // Інші перевірки всі на купу
-    public function sintaksisValid()
-        {
-        // Далі нічого не робимо, якщо раніше помічена хоча б одна помилка
-        if (!empty($this->error))
-            return false;
-        // Перелік поштовиків які ТОЧНО не допускають два "символи", що йдуть один за одним
+    /**
+     * Перевірка синтаксису (подвійні символи тощо)
+     */
+    private function sintaksisValid(array $epart): bool
+    {
         $restrictedDomains = ['ya.ru', 'yandex', 'mail.ru', 'bk.ru', 'mail.ua', 'inbox.ru', 'gmail.com', 'list.ru'];
         $invalidPatterns = ['..', '-.', '.-', '_.', '._', '--', '-_', '_-', '__'];
 
-        foreach ($restrictedDomains as $domain) {
-            if (strpos($this->epart['domainAll'], $domain) !== false) {
-                foreach ($invalidPatterns as $pattern) {
-                    if (strpos($this->epart['localPart'], $pattern) !== false) {
-                        $this->error[] = 'sintaksisValid';
-                        }
-                    }
-                }
+        $isRestricted = false;
+        foreach ($restrictedDomains as $rd) {
+            if (str_contains($epart['domainAll'], $rd)) {
+                $isRestricted = true;
+                break;
             }
-
-        if (isset($this->epart['localPart'][0])) {
-            // Мило не може починатися з наступних символів у жодної з поштовиків
-            if (
-                strpos($this->epart['localPart'][0], '.') !== false ||
-                strpos($this->epart['localPart'][0], '-') !== false ||
-                strpos($this->epart['localPart'][0], '_') !== false
-            ) {
-                $this->error[] = 'sintaksisValid';
-                }
-
-            // Мило  безпосередньо перед собачкою не може містити наступні символи в жодної з поштовиків
-            $lastChar = $this->epart['localPart'][strlen($this->epart['localPart']) - 1];
-            if (
-                strpos($lastChar, '.') !== false ||
-                strpos($lastChar, '-') !== false ||
-                strpos($lastChar, '_') !== false
-            ) {
-                $this->error[] = 'sintaksisValid';
-                }
-            }
-
-        // Якщо домен 4-го та вище рівнів - повертаємо помилку
-        $email_array = explode('.', $this->epart['domainAll']);
-        if (count($email_array) > 3) {
-            $this->error[] = 'sintaksisValid';
-            }
-
-        // Якщо в доменій зоні є цифри
-        $ext = end($email_array);
-        if (preg_match('/\d/', $ext)) {
-            $this->error[] = 'sintaksisValid';
-            }
-
         }
 
-    // Відаємо опрацьований email
-    public function getEmail()
-        {
+        if ($isRestricted) {
+            foreach ($invalidPatterns as $pattern) {
+                if (str_contains($epart['localPart'], $pattern)) return true;
+            }
+        }
+
+        // Початок або кінець з символу
+        $first = $epart['localPart'][0] ?? '';
+        $last = $epart['localPart'][strlen($epart['localPart']) - 1] ?? '';
+        $symbols = ['.', '-', '_'];
+
+        if (in_array($first, $symbols) || in_array($last, $symbols)) return true;
+
+        // Глибина піддоменів
+        if (count(explode('.', $epart['domainAll'])) > 3) return true;
+
+        // Цифри в зоні
+        if (preg_match('/\d/', $epart['domainZone'])) return true;
+
+        return false;
+    }
+
+    /**
+     * Перевірка довжини зони
+     */
+    private function domainZoneLength(string $zone): bool
+    {
+        return strlen($zone) > 15;
+    }
+
+    /**
+     * Чорний список доменів та зон
+     */
+    private function stopDomainALL(array $epart): bool
+    {
+        $badDomains = [
+            'com.ua', 'ua.com', 'kom.ua', 'kis.ru', 'kom.ru', 'com.ru', 'ru.com', 'meil.com', 'mael.com', 'emeil.ru', 'emeil.com', 'imeil.ua', 'com.com',
+            'net.ua', 'net.ru', 'com.net', 'example.com', 'sitemail.com', 'site.com', 'email.com', 'mailcom.ru',
+            'yahoo.net', 'hotmail.ru', 'ramler.ru', 'ramdler.ru', 'rambler.com', 'yaho.com',
+            'ua.net', 'ykr.net', 'ykt.net', 'ukt.net', 'ucr.net', 'ukr.com',
+            'bigmir.ua', 'bigmir.com',
+            'gmail.ru', 'gmail.ua', 'gmail.com.ua', 'gmail.com.ru',
+            'ya.ua', 'ya.com', 'yande.ru', 'yande.ua',
+            'inboks.ru', 'indox.ru', 'list.ua', 'list.com', 'iist.ru', 'iist.ua',
+            'bk.com', 'bk.ua', 'dk.com', 'br.com', 'dk.ru', 'br.ru', 'bl.ru', 'bj.ru',
+            'vk.ru', 'vk.com', 'vkontakte.ru', 'mail.com', 'mail.com.ua', 'mail.com.ru',
+        ];
+        $badZones = ['yy', 'aa'];
+
+        return in_array($epart['domainAll'], $badDomains) || in_array($epart['domainZone'], $badZones);
+    }
+
+    /**
+     * Заборона однолітерних доменів
+     */
+    private function oneLetter(string $domainAll): bool
+    {
+        if (str_contains($domainAll, 'i.ua') || str_contains($domainAll, 'a.ua')) return false;
+        
+        $parts = explode('.', $domainAll);
+        return strlen($parts[0] ?? '') === 1;
+    }
+
+    /**
+     * Сміттєві зони
+     */
+    private function badZone(string $zone): bool
+    {
+        return in_array($zone, ['xxx', 'biz', 'cc']);
+    }
+
+    /**
+     * Нормалізація email до еталонного вигляду
+     */
+    private function buildStandartEmail(string $email): string
+    {
+        if (preg_match('/@(?:yandex\.[a-z]{2,3}|ya\.ru|narod\.ru)$/i', $email)) {
+            [$box] = explode('@', $email);
+            return str_replace('-', '.', $box) . '@yandex.ru';
+        }
+
+        if (preg_match('/@(gmail\.com|googlemail\.com)$/i', $email)) {
+            [$box] = explode('@', $email);
+            return str_replace('.', '', $box) . '@gmail.com';
+        }
+
+        if (preg_match('/@(pm\.me|proton\.me|protonmail\.com)$/i', $email)) {
+            [$box] = explode('@', $email);
+            return str_replace('.', '', $box) . '@proton.me';
+        }
+
+        if (preg_match('/@(icloud\.com)$/i', $email)) {
+            [$box] = explode('@', $email);
+            return str_replace('.', '', $box) . '@icloud.com';
+        }
+
+        if (preg_match('/@(ymail\.com)$/i', $email)) {
+            [$box] = explode('@', $email);
+            return $box . '@yahoo.com';
+        }
+
+        return $email;
+    }
+
+    /**
+     * Перевірка Yandex телефонів
+     */
+    private function yaPhone(array $epart): bool
+    {
+        if (preg_match('/yandex|ya\.ru/', $epart['domainAll'])) {
+            $phoneCodes = ['/^380/', '/^37/', '/^99/', '/^79/', '/^89/', '/^77/'];
+            foreach ($phoneCodes as $code) {
+                if (preg_match($code, $epart['localPart']) && preg_match('/^\d{11,13}$/', $epart['localPart'])) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Мінімальна довжина локальної частини
+     */
+    private function minLength(array $epart): bool
+    {
+        $domainRules = [
+            'i.ua' => 6, 'ro.ru' => 6, 'r0.ru' => 6, 'rambler.ru' => 6, 'lenta.ru' => 6,
+            'myrambler.ru' => 6, 'gmail.com' => 5, 'mail.ru' => 3, 'mail.ua' => 3,
+            'inbox.ru' => 3, 'list.ru' => 3, 'bk.ru' => 3
+        ];
+        $min = $domainRules[$epart['domainAll']] ?? 3;
+        return strlen($epart['localPart']) < $min;
+    }
+
+    /**
+     * Заборона підкреслень у певних сервісах
+     */
+    private function tireStop(string $domainOnly, string $localPart): bool
+    {
+        return str_contains($domainOnly, 'yandex') && str_contains($localPart, '_');
+    }
+
+    /**
+     * Користувацький бан-лист
+     */
+    private function neNa(string $domainAll): bool
+    {
+        return in_array($domainAll, ['my.com', 'rambler.ua']);
+    }
+
+    /**
+     * Додавання помилки до списку
+     */
+    private function addError(string $error): void
+    {
+        $this->errors[] = $error;
+    }
+
+    /**
+     * Чи є помилки
+     */
+    public function hasError(): bool
+    {
+        return !empty($this->errors);
+    }
+
+    /**
+     * Отримання результату
+     */
+    public function getEmail(): string
+    {
         return $this->email;
-        }
-    // Повідомляємо, чи були якісь помилки підчас опрацювання email
-    public function getError()
-        {
-        return $this->error;
-        }
+    }
 
-
-
-
-    } // class 
-
+    /**
+     * Отримання першої помилки або всього списку
+     */
+    public function getError(bool $all = false): string|array
+    {
+        return $all ? $this->errors : ($this->errors[0] ?? '');
+    }
+}
